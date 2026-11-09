@@ -417,6 +417,7 @@ try{
     <div class="bar">
       <input class="grow" id="mq" type="search" placeholder="Filtrar por peça, código, motivo, responsável ou observação">
       <select id="mt" aria-label="Tipo"><option value="all">Entradas e saídas</option><option value="E">Só entradas</option><option value="S">Só saídas</option></select>
+      <select id="mmot" aria-label="Motivo"><option value="">Todos os motivos</option></select>
       <input id="mde" type="date" aria-label="De"><input id="mate" type="date" aria-label="Até">
       <button class="s" id="mclr">Limpar</button>
     </div>
@@ -577,8 +578,8 @@ let db,prods=[],movs=[],cats=[],cur='__all',view='prod',editId=null,foto='',resp
 let visibleProds=[],visibleMovs=[];
 const selectedProducts=new Set(),selectedMovs=new Set(),selectedReport=new Map();
 const DEF=['Coletores','Portas','Faróis','Para-choques','Retrovisores','Outros'];
-const MOT={E:['Compra','Devolução de cliente','Transferência recebida','Ajuste de inventário','Outro'],
-           S:['Venda','Uso interno / oficina','Perda / avaria','Devolução ao fornecedor','Ajuste de inventário','Outro']};
+const MOT={E:['Compra','Devolução de cliente','Troca','Transferência recebida','Ajuste de inventário','Outro'],
+           S:['Venda','Troca','Uso interno / oficina','Perda / avaria','Devolução ao fornecedor','Ajuste de inventário','Outro']};
 
 /* utilidades */
 const uid=()=>crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2);
@@ -803,7 +804,7 @@ function renderFinanceiro(){
   const recentes=[...periodo].sort((a,b)=>new Date(b.m.data)-new Date(a.m.data)).slice(0,8);
   $('finLista').innerHTML=recentes.length?recentes.map(({m,tipo,centavos})=>`
     <div class="finance-entry">
-      <div class="finance-entry-main"><div class="finance-entry-title">${esc(m.nome||'Peça')}</div><div class="finance-entry-meta">${tipo==='entrada'?'Venda':'Compra'} · ${dtf(m.data)} · ${m.qtd} un.</div></div>
+      <div class="finance-entry-main"><div class="finance-entry-title">${esc(m.nome||'Peça')}</div><div class="finance-entry-meta">${tipo==='entrada'?'Venda':'Compra'} · ${dtf(m.data)} · ${m.qtd} un. · Resp.: ${esc(m.resp)||'—'}</div></div>
       <div class="finance-entry-value ${tipo}">${tipo==='entrada'?'+':'−'}${money(centavos/100)}</div>
     </div>`).join(''):'<div class="finance-empty">Nenhuma venda ou compra registrada neste período.</div>';
 }
@@ -992,8 +993,12 @@ $('mok').onclick=async()=>{
   }catch(e){avisar(e.message,{tipo:'erro'})}
 };
 function renderMov(){
-  const q=sem($('mq').value).split(/\s+/).filter(Boolean),t=$('mt').value,[a,b]=rng($('mde').value,$('mate').value);
-  const l=movs.filter(m=>{const d=+new Date(m.data);return d>=a&&d<=b&&(t==='all'||m.tipo===t)&&q.every(w=>sem([m.nome,m.codigo,m.motivo,m.obs,m.resp].join(' ')).includes(w))})
+  const q=sem($('mq').value).split(/\s+/).filter(Boolean),t=$('mt').value,motivo=$('mmot').value,[a,b]=rng($('mde').value,$('mate').value);
+  const motivos=[...new Set([...Object.entries(MOT).filter(([tipo])=>t==='all'||tipo===t).flatMap(([,lista])=>lista),...movs.filter(m=>t==='all'||m.tipo===t).map(m=>m.motivo).filter(Boolean)])];
+  if(motivo&&!motivos.includes(motivo))$('mmot').value='';
+  $('mmot').innerHTML='<option value="">Todos os motivos</option>'+motivos.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join('');
+  $('mmot').value=motivos.includes(motivo)?motivo:'';
+  const l=movs.filter(m=>{const d=+new Date(m.data);return d>=a&&d<=b&&(t==='all'||m.tipo===t)&&(!$('mmot').value||m.motivo===$('mmot').value)&&q.every(w=>sem([m.nome,m.codigo,m.motivo,m.obs,m.resp].join(' ')).includes(w))})
     .sort((x,y)=>y.data.localeCompare(x.data));
   visibleMovs=l.slice(0,500);
   const en=l.filter(m=>m.tipo==='E').reduce((s,m)=>s+m.qtd,0),sa=l.filter(m=>m.tipo==='S').reduce((s,m)=>s+m.qtd,0);
@@ -1035,7 +1040,8 @@ $('movDeleteAll').onclick=()=>excluirRegistros({
   authText:`Autorizar exclusão de todas as ${movs.length} movimentações.`
 });
 for(const id of ['mq','mt','mde','mate'])$(id).oninput=renderMov;
-$('mclr').onclick=()=>{$('mq').value='';$('mt').value='all';$('mde').value='';$('mate').value='';renderMov()};
+$('mmot').onchange=renderMov;
+$('mclr').onclick=()=>{$('mq').value='';$('mt').value='all';$('mmot').value='';$('mde').value='';$('mate').value='';renderMov()};
 
 /* relatórios */
 let lastRep=null;
