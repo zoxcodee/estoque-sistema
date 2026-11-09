@@ -460,12 +460,14 @@ try{
 <dialog id="dmov">
   <h2 id="mtit">Registrar movimentação</h2>
   <div class="seg"><button id="sE">Entrada</button><button id="sS">Saída</button></div>
+  <div id="saleMode" class="seg" hidden style="margin-top:8px"><button id="saleExisting" type="button" class="on">Com Cadastro</button><button id="saleFree" type="button">Sem Cadastro</button></div>
   <div id="pick"><label>Peça</label><input id="mps" placeholder="Buscar por nome ou código"><select id="msel" size="5" style="margin-top:6px"></select></div>
+  <div id="customProduct" hidden><label for="mcustom">Nome do produto *</label><input id="mcustom" maxlength="100" placeholder="Digite o nome do produto"></div>
   <div id="fixed" hidden><label>Peça</label><div class="nm" id="fixn"></div></div>
   <div class="pv" id="mpv"></div>
   <div class="row"><div><label>Quantidade *</label><input id="mqt" inputmode="numeric"></div><div><label>Valor unitário (R$)</label><input id="mvu" inputmode="decimal"></div></div>
   <label>Motivo</label><select id="mmo"></select>
-  <label>Documento / observação</label><input id="mob" maxlength="200" placeholder="NF, pedido, cliente, OS...">
+  <label>Documento / observação</label><input id="mob" maxlength="200" placeholder="NF, pedido, cliente...">
   <label for="mfiles">Anexar arquivos</label>
   <div class="file-picker"><input id="mfiles" type="file" multiple><label for="mfiles">Escolher arquivos</label><span class="file-name" id="mfilesname">Nenhum arquivo selecionado</span></div>
   <div class="row"><div><label>Responsável</label><input id="mre" maxlength="60"></div><div><label>Data e hora</label><input id="mdt" type="datetime-local"></div></div>
@@ -728,6 +730,10 @@ function registrarMov(prodId,tipo,qtd,motivo,obs,rsp,valor,data,attachments){ret
     const m={id:uid(),prodId:p.id,nome:p.nome,codigo:p.codigo,cat:p.cat,tipo,qtd,saldo:novo,motivo,obs,resp:rsp,valor,data,attachments};
     ms.put(m);res={p:fix(p),m}};
   t.oncomplete=()=>ok(res);t.onerror=()=>er(erro||t.error);t.onabort=()=>er(erro||t.error||new Error('Operação cancelada'))})}
+function registrarVendaLivre(nome,qtd,motivo,obs,rsp,valor,data,attachments){return new Promise((ok,er)=>{
+  const t=db.transaction('movs','readwrite'),ms=t.objectStore('movs');
+  const m={id:uid(),prodId:null,nome,codigo:'',cat:'',tipo:'S',qtd,saldo:null,motivo,obs,resp:rsp,valor,data,attachments};
+  ms.put(m);t.oncomplete=()=>ok(m);t.onerror=()=>er(t.error);t.onabort=()=>er(t.error||new Error('Operação cancelada'))})}
 
 /* recarrega os dados do banco local (usado quando chegam alterações de outro aparelho) */
 async function recarregar(){
@@ -933,19 +939,31 @@ function fillSel(){const q=sem($('mps').value).split(/\s+/).filter(Boolean),keep
 function onProd(){prefill();preview()}
 function prefill(){const p=mprod();$('mvu').value=p?fin(mv.t==='E'?p.custo:p.venda):''}
 function preview(){const p=mprod(),q=/^\d+$/.test($('mqt').value.trim())?parseInt($('mqt').value):0,e=$('mpv');
+  if(mv.custom){e.textContent='Venda sem produto cadastrado; o estoque não será alterado.';return}
   if(!p){e.textContent='Selecione uma peça.';return}
   const novo=p.qtd+(mv.t==='E'?q:-q);
   e.innerHTML=`Estoque atual: <b>${p.qtd}</b>`+(q?` → após a movimentação: <b class="${novo<0?'zero':''}">${novo}</b>${novo<0?' (insuficiente)':''}`:'')}
 function setTipo(t){mv.t=t;$('sE').classList.toggle('on',t==='E');$('sS').classList.toggle('on',t==='S');
+  if(t!=='S'&&mv.custom){mv.custom=false;$('mcustom').value=''}
+  $('saleMode').hidden=!(mv.venda&&t==='S');
+  $('pick').hidden=!!mv.id||!!mv.custom;$('customProduct').hidden=!mv.custom;
+  $('saleExisting').classList.toggle('on',!mv.custom);$('saleFree').classList.toggle('on',!!mv.custom);
   $('mtit').textContent=t==='E'?'Registrar entrada':mv.venda?'Registrar venda':'Registrar saída';
   $('mmo').innerHTML=MOT[t].map(m=>`<option>${m}</option>`).join('');prefill();preview()}
-function openMov(id,t,venda=false){mv={id:id||null,t,venda};
+function setVendaLivre(livre){if(!mv.venda||mv.t!=='S')return;
+  mv.custom=livre;$('saleExisting').classList.toggle('on',!livre);$('saleFree').classList.toggle('on',livre);
+  $('pick').hidden=livre;$('customProduct').hidden=!livre;
+  if(livre){$('mcustom').value='';$('mvu').value='';preview()}
+  else{prefill();preview()}}
+function openMov(id,t,venda=false){mv={id:id||null,t,venda,custom:false};
   $('pick').hidden=!!id;$('fixed').hidden=!id;
   if(id){const p=prods.find(x=>x.id===id);$('fixn').textContent=`${p.codigo} — ${p.nome}`}
-  else{if(!prods.length){avisar('Cadastre um produto primeiro.');return}$('mps').value='';fillSel()}
-  $('mqt').value='';$('mob').value='';$('mfiles').value='';$('mfilesname').textContent='Nenhum arquivo selecionado';$('mre').value=resp;$('mdt').value=nowLocal();
-  setTipo(t);$('dmov').showModal();if(id)$('mqt').focus()}
+  else{if(!prods.length&&!venda){avisar('Cadastre um produto primeiro.');return}$('mps').value='';fillSel()}
+  $('mqt').value='';$('mcustom').value='';$('mob').value='';$('mfiles').value='';$('mfilesname').textContent='Nenhum arquivo selecionado';$('mre').value=resp;$('mdt').value=nowLocal();
+  setTipo(t);if(venda&&!prods.length)setVendaLivre(true);
+  $('dmov').showModal();if(id)$('mqt').focus();else if(mv.custom)$('mcustom').focus()}
 $('sE').onclick=()=>setTipo('E');$('sS').onclick=()=>setTipo('S');
+$('saleExisting').onclick=()=>setVendaLivre(false);$('saleFree').onclick=()=>setVendaLivre(true);
 $('mps').oninput=fillSel;$('msel').onchange=onProd;$('mqt').oninput=preview;
 $('mfiles').onchange=()=>{$('mfilesname').textContent=[...$('mfiles').files].map(f=>f.name).join(', ')||'Nenhum arquivo selecionado'};
 $('bE').onclick=()=>openMov(null,'E');$('bS').onclick=()=>openMov(null,'S');
@@ -953,19 +971,24 @@ $('registrarVenda').onclick=()=>openMov(null,'S',true);
 $('mcx').onclick=()=>$('dmov').close();
 $('dmov').addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.tagName==='INPUT'&&e.target.id!=='mps'){e.preventDefault();$('mok').click()}});
 $('mok').onclick=async()=>{
-  const p=mprod();if(!p){avisar('Selecione a peça.');return}
+  const vendaLivre=mv.venda&&mv.custom,nomeLivre=$('mcustom').value.trim(),p=vendaLivre?null:mprod();
+  if(vendaLivre&&!nomeLivre){avisar('Informe o nome do produto.',{foco:'mcustom'});return}
+  if(!vendaLivre&&!p){avisar('Selecione a peça.');return}
   const qs=$('mqt').value.trim();if(!/^\d+$/.test(qs)||parseInt(qs)<1){avisar('Informe uma quantidade inteira maior que zero.',{foco:'mqt'});return}
   const q=parseInt(qs),valor=num($('mvu').value);if(Number.isNaN(valor)){avisar('Valor unitário inválido (ex.: 149,90).');return}
-  if(mv.t==='S'&&q>p.qtd){avisar(`Estoque insuficiente: há apenas ${p.qtd} unidade(s) de "${p.nome}".`);return}
+  if(!vendaLivre&&mv.t==='S'&&q>p.qtd){avisar(`Estoque insuficiente: há apenas ${p.qtd} unidade(s) de "${p.nome}".`);return}
   const d=new Date($('mdt').value);if(isNaN(d)){avisar('Data e hora inválidas.');return}
   const rs=$('mre').value.trim();
   try{
     const attachments=await Promise.all([...$('mfiles').files].map(lerArquivo));
-    const r=await registrarMov(p.id,mv.t,q,$('mmo').value,$('mob').value.trim(),rs,valor,d.toISOString(),attachments);
-    prods=prods.map(x=>x.id===p.id?r.p:x);movs.push(r.m);
+    const nome=vendaLivre?nomeLivre:p.nome;
+    const r=vendaLivre
+      ?{m:await registrarVendaLivre(nome,q,$('mmo').value,$('mob').value.trim(),rs,valor,d.toISOString(),attachments)}
+      :await registrarMov(p.id,mv.t,q,$('mmo').value,$('mob').value.trim(),rs,valor,d.toISOString(),attachments);
+    if(p)prods=prods.map(x=>x.id===p.id?r.p:x);movs.push(r.m);
     if(rs!==resp){resp=rs;try{await req(tx('meta','readwrite').put(resp,'resp'))}catch(_){}}
-    $('dmov').close();renderAll();toast(`${mv.t==='E'?'Entrada':'Saída'} registrada. Estoque: ${r.p.qtd}`);
-    logar(mv.t==='E'?'📥 Entrada de estoque':'📤 Saída de estoque',`**${p.nome}** (cód. ${p.codigo||'—'})\nQuantidade: ${q} un. • Motivo: ${$('mmo').value}\nValor unitário: ${money(valor)} • Estoque agora: ${r.p.qtd} un.${rs?`\nResponsável: ${rs}`:''}${attachments.length?`\nAnexos: ${attachments.length}`:''}`,mv.t==='E'?'ok':'aviso',{before:{estoque:p.qtd},after:{estoque:r.p.qtd,movimentacao:r.m}})
+    $('dmov').close();renderAll();toast(vendaLivre?'Venda registrada. Estoque não alterado.':`${mv.t==='E'?'Entrada':'Saída'} registrada. Estoque: ${r.p.qtd}`);
+    logar(mv.t==='E'?'📥 Entrada de estoque':vendaLivre?'💰 Venda registrada':'📤 Saída de estoque',`**${nome}**${p?` (cód. ${p.codigo||'—'})`:''}\nQuantidade: ${q} un. • Motivo: ${$('mmo').value}\nValor unitário: ${money(valor)}${p?` • Estoque agora: ${r.p.qtd} un.`:' • Estoque não alterado.'}${rs?`\nResponsável: ${rs}`:''}${attachments.length?`\nAnexos: ${attachments.length}`:''}`,mv.t==='E'?'ok':'aviso',{before:p?{estoque:p.qtd}:null,after:{...(p?{estoque:r.p.qtd}:{}),movimentacao:r.m}})
   }catch(e){avisar(e.message,{tipo:'erro'})}
 };
 function renderMov(){
@@ -983,7 +1006,7 @@ function renderMov(){
   $('mbody').innerHTML=l.length?visibleMovs.map(m=>`<tr><td class="check-cell"><input type="checkbox" data-select-mov="${esc(m.id)}" aria-label="Selecionar movimentação de ${esc(m.nome)}" ${selectedMovs.has(m.id)?'checked':''}></td><td>${dtf(m.data)}</td>
     <td><span class="bd ${m.tipo==='E'?'ok':'zero'}">${m.tipo==='E'?'Entrada':'Saída'}</span></td>
     <td><b>${esc(m.nome)}</b><br><span class="code">${esc(m.codigo)}</span></td>
-    <td class="n"><b class="${m.tipo==='E'?'ok':'zero'}">${m.tipo==='E'?'+':'−'}${m.qtd}</b></td><td class="n">${m.saldo}</td>
+    <td class="n"><b class="${m.tipo==='E'?'ok':'zero'}">${m.tipo==='E'?'+':'−'}${m.qtd}</b></td><td class="n">${m.saldo??'—'}</td>
     <td>${esc(m.motivo)}</td><td class="n">${money(m.valor)}</td><td>${esc(m.resp)||'—'}</td><td>${esc(m.obs)||'—'}</td>
     <td><div class="attachments">${(m.attachments||[]).map((a,i)=>`<button type="button" data-mov="${esc(m.id)}" data-file="${i}" title="Baixar ${esc(a.name)}">${esc(a.name)}</button>`).join('')||'—'}</div></td></tr>`).join('')
     :`<tr><td colspan="11" class="empty">Nenhuma movimentação encontrada.</td></tr>`;
@@ -1037,7 +1060,7 @@ const REPS={
    cols:['Data','Tipo','Código','Peça','Qtd','Valor unit.','Total','Motivo','Responsável','Obs.'],num:[4,5,6],
     rows:l.map(m=>[dtf(m.data),m.tipo==='E'?'Entrada':'Saída',m.codigo,m.nome,m.qtd,money(m.valor),m.valor!=null?money(m.valor*m.qtd):'—',m.motivo,m.resp||'—',m.obs||'—']),targets:l.map(m=>[{kind:'m',id:m.id}])}},
  top(){const [a,b]=rng($('rde').value,$('rate').value),g={};
-   movs.filter(m=>{const d=+new Date(m.data);return m.tipo==='S'&&d>=a&&d<=b}).forEach(m=>{const x=g[m.prodId]||(g[m.prodId]={codigo:m.codigo,nome:m.nome,q:0,v:0,ids:[]});x.q+=m.qtd;x.v+=m.qtd*(m.valor||0);x.ids.push(m.id)});
+   movs.filter(m=>{const d=+new Date(m.data);return m.tipo==='S'&&d>=a&&d<=b}).forEach(m=>{const key=m.prodId||`livre:${sem(m.nome)}`,x=g[key]||(g[key]={codigo:m.codigo,nome:m.nome,q:0,v:0,ids:[]});x.q+=m.qtd;x.v+=m.qtd*(m.valor||0);x.ids.push(m.id)});
   const l=Object.values(g).sort((x,y)=>y.q-x.q);
   return {title:'Peças com mais saídas',sub:`Período: ${dd($('rde').value)} a ${dd($('rate').value)}`,
    sum:`${l.length} peça(s) com saída · ${l.reduce((s,x)=>s+x.q,0)} unidade(s) no total`,
@@ -1377,7 +1400,7 @@ $('rf').onchange=async()=>{
     if(!Array.isArray(d.cats)||!Array.isArray(d.prods))throw new Error('x');
     const mm=Array.isArray(d.movs)?d.movs:[];
     const validAttachments=m=>m.attachments===undefined||(Array.isArray(m.attachments)&&m.attachments.every(a=>a&&typeof a.name==='string'&&typeof a.data==='string'&&(a.type===undefined||typeof a.type==='string')));
-    if(!d.prods.every(p=>p&&p.id&&typeof p.nome==='string'&&Number.isInteger(p.qtd))||!mm.every(m=>m&&m.id&&m.prodId&&(m.tipo==='E'||m.tipo==='S')&&Number.isInteger(m.qtd)&&m.data&&validAttachments(m)))throw new Error('x');
+    if(!d.prods.every(p=>p&&p.id&&typeof p.nome==='string'&&Number.isInteger(p.qtd))||!mm.every(m=>m&&m.id&&(m.prodId===null||m.prodId)&&(m.tipo==='E'||m.tipo==='S')&&Number.isInteger(m.qtd)&&m.data&&validAttachments(m)))throw new Error('x');
     if(!await confirmar(`Isso substitui TODOS os dados atuais pelos do backup (${d.prods.length} produto(s), ${mm.length} movimentação(ões)).`,{tipo:'perigo',titulo:'Restaurar backup?',ok:'Restaurar'}))return;
     const beforeBackup={produtos:prods.length,movimentacoes:movs.length,categorias:[...cats]};
     const np=d.prods.map(fix),nc=[...d.cats];np.forEach(p=>{if(p.cat&&!nc.includes(p.cat))nc.push(p.cat)});
