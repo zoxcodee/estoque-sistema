@@ -12,9 +12,13 @@
 <link rel="icon" type="image/png" href="./icone.png">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="apple-touch-icon" href="./icone-192.png">
+<script>(function(){try{var t=localStorage.getItem("intacto-tema");if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t)}catch(e){}})();</script>
 <style>
 :root{--bg:#eceff1;--card:#fff;--ink:#1f2a30;--mut:#5f6f78;--line:#cfd6da;--acc:#0509f2;--accink:#ffffff;--ok:#2e7d4f;--warn:#b26a00;--bad:#b3261e;--side:#1f2a30;--sidei:#e8edf0;--wallpaper-overlay:rgba(236,239,241,.68)}
-@media(prefers-color-scheme:dark){:root{--bg:#161d21;--card:#202a30;--ink:#e8edf0;--mut:#9aabb3;--line:#33424a;--side:#10161a;--ok:#5fc08a;--warn:#f0a53a;--bad:#ff8a80;--wallpaper-overlay:rgba(22,29,33,.68)}}
+:root[data-theme="light"]{color-scheme:light}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#161d21;--card:#202a30;--ink:#e8edf0;--mut:#9aabb3;--line:#33424a;--side:#10161a;--ok:#5fc08a;--warn:#f0a53a;--bad:#ff8a80;--wallpaper-overlay:rgba(22,29,33,.68)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#161d21;--card:#202a30;--ink:#e8edf0;--mut:#9aabb3;--line:#33424a;--side:#10161a;--ok:#5fc08a;--warn:#f0a53a;--bad:#ff8a80;--wallpaper-overlay:rgba(22,29,33,.68)}}
+.theme-toggle.auth-theme{position:absolute;top:14px;right:14px;z-index:2;margin:0;padding:6px 11px;font:inherit;font-size:12px;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:999px;cursor:pointer;text-decoration:none}
 *{box-sizing:border-box}
 body{margin:0;font-family:"Segoe UI",Roboto,Arial,sans-serif;background-color:var(--bg);background-image:linear-gradient(var(--wallpaper-overlay),var(--wallpaper-overlay)),var(--wallpaper,url("./icone.png"));background-position:center;background-size:cover;background-attachment:fixed;color:var(--ink);display:flex;min-height:100vh;isolation:isolate}
 body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;background:var(--brand-logo,url("./icone.png")) right 8% bottom 8%/ min(42vw,420px) auto no-repeat;opacity:.12}
@@ -252,7 +256,7 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
   .foot button{flex:1}
   .tbl{min-width:800px}
 }
-@media print{:root{--bg:#fff;--card:#fff;--ink:#000;--mut:#333;--line:#999}aside,.bar,#toast{display:none!important}main{padding:0}body{display:block}.tw{border:0}.tbl th{background:#eee!important;print-color-adjust:exact;-webkit-print-color-adjust:exact}}
+@media print{:root:root:root{--bg:#fff;--card:#fff;--ink:#000;--mut:#333;--line:#999}aside,.bar,#toast{display:none!important}main{padding:0}body{display:block}.tw{border:0}.tbl th{background:#eee!important;print-color-adjust:exact;-webkit-print-color-adjust:exact}}
 </style>
 <script>
 try{
@@ -272,6 +276,7 @@ try{
 <body>
 <div id="auth">
   <div class="auth-card">
+    <button type="button" class="theme-toggle auth-theme" aria-label="Alternar tema claro/escuro"></button>
     <div class="auth-brand"><img class="auth-mark" id="authLogo" src="./icone.png" alt=""><div class="auth-logo">Intacto Car<span>Gestão de estoque</span></div></div>
     <script>
     try{
@@ -349,6 +354,7 @@ try{
     <button class="side-btn" id="mCat">Gerenciar categorias</button>
   </div>
   <div class="sec">Dados</div>
+  <button class="side-btn theme-toggle" id="themeToggle" type="button" aria-label="Alternar tema claro/escuro"></button>
   <button class="side-btn" id="logopick">Alterar logo</button>
   <button class="side-btn" id="logoreset">Restaurar logo original</button>
   <input type="file" id="logofile" accept="image/*" hidden>
@@ -1419,6 +1425,21 @@ init();
 if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)){
   navigator.serviceWorker.register('./sw.js').catch(e=>console.error('Não foi possível ativar o modo offline:',e));
 }
+</script>
+<script>
+(function(){
+  var root=document.documentElement,key="intacto-tema",mq=window.matchMedia("(prefers-color-scheme:dark)");
+  function isDark(){var t=root.getAttribute("data-theme");return t?t==="dark":mq.matches}
+  function paint(){var d=isDark();document.querySelectorAll(".theme-toggle").forEach(function(b){b.textContent=d?"\u2600\uFE0F Tema claro":"\uD83C\uDF19 Tema escuro";b.setAttribute("aria-pressed",String(d))})}
+  document.addEventListener("click",function(e){
+    var b=e.target.closest&&e.target.closest(".theme-toggle");if(!b)return;
+    var next=isDark()?"light":"dark";root.setAttribute("data-theme",next);
+    try{localStorage.setItem(key,next)}catch(_){}
+    paint();
+  });
+  if(mq.addEventListener)mq.addEventListener("change",paint);
+  paint();
+})();
 </script>
 </body>
 </html>
